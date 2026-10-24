@@ -32,10 +32,6 @@
     #offer-links header button { border: 0; background: none; font-size: 1.2rem; cursor: pointer; color: #666; }
     .offer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .4rem 0; border-top: 1px solid #eee; }
     .offer span { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .offer .links { display: flex; gap: .4rem; flex-shrink: 0; }
-    .offer a { text-decoration: none; padding: .35rem .7rem; border-radius: 999px; font-size: .9rem; }
-    .offer a.open { background: #111; color: #fff; }
-    .offer a.map { border: 1px solid #ccc; color: #222; }
   </style>
 </head>
 <body>
@@ -50,9 +46,12 @@
   <elevenlabs-convai agent-id="agent_01jxjv69ktes7sa66s0cjcafs1" variant="expanded"></elevenlabs-convai>
   <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
   <script>
-    // Client tool `show_offer_link`: the agent calls it for each deal it shows,
-    // and the page lists real, clickable links instead of the agent speaking them.
+    // Client tool `show_offer_link`: the agent calls it for each deal it shows.
+    // The page adds real "Open in Luqta" / map buttons inside the matching
+    // carousel card (cards are matched by business name = card image alt).
+    // Deals that match no card within a few seconds go to the top panel instead.
     (() => {
+      const widget = document.querySelector("elevenlabs-convai");
       const panel = document.getElementById("offer-links");
       panel.querySelector("header button").onclick = () => panel.classList.remove("show");
       const ALLOWED = ["luqtaapp.com", "maps.google.com"];
@@ -63,28 +62,73 @@
           return url.protocol === "https:" && ALLOWED.includes(host) ? url.href : null;
         } catch { return null; }
       };
-      const shown = new Map(); // luqta_link -> row, newest last, max 5
-      function showOfferLink({ business, luqta_link, map }) {
-        const open = safe(luqta_link);
-        if (!open) return "rejected: not a Luqta link";
-        shown.get(open)?.remove();
+      const key = (s) => String(s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+      const deals = new Map(); // key(business) -> { business, open, map }
+
+      const BTN = "display:inline-block;padding:6px 12px;border-radius:999px;font-size:13px;" +
+        "text-decoration:none;line-height:1.2;";
+      function linkRow({ open, map }) {
+        const row = document.createElement("div");
+        row.dataset.luqtaLinks = "1";
+        row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;";
+        row.append(Object.assign(document.createElement("a"), {
+          href: open, target: "_blank", rel: "noopener", textContent: "افتح بلقطة",
+        }));
+        row.lastChild.style.cssText = BTN + "background:#111;color:#fff;";
+        if (map) {
+          row.append(Object.assign(document.createElement("a"), {
+            href: map, target: "_blank", rel: "noopener", textContent: "📍 الموقع",
+          }));
+          row.lastChild.style.cssText = BTN + "border:1px solid #ccc;color:#222;";
+        }
+        return row;
+      }
+
+      // Add buttons to every card whose image alt matches a known deal.
+      function decorateCards() {
+        const root = widget.shadowRoot;
+        if (!root) return new Set();
+        const matched = new Set();
+        for (const img of root.querySelectorAll("img[alt]")) {
+          const deal = deals.get(key(img.alt));
+          const card = img.parentElement;
+          if (!deal || !card) continue;
+          matched.add(key(img.alt));
+          if (!card.querySelector("[data-luqta-links]")) card.append(linkRow(deal));
+        }
+        return matched;
+      }
+
+      function showInPanel(deal) {
         const row = document.createElement("div");
         row.className = "offer";
         const name = document.createElement("span");
-        name.textContent = String(business ?? "عرض").slice(0, 60);
-        const links = document.createElement("div");
-        links.className = "links";
-        links.append(Object.assign(document.createElement("a"), { href: open, target: "_blank", rel: "noopener", className: "open", textContent: "افتح بلقطة" }));
-        const m = safe(map);
-        if (m) links.append(Object.assign(document.createElement("a"), { href: m, target: "_blank", rel: "noopener", className: "map", textContent: "📍 الموقع" }));
-        row.append(name, links);
+        name.textContent = deal.business;
+        row.append(name, linkRow(deal));
         panel.append(row);
-        shown.set(open, row);
-        while (shown.size > 5) { const [k, r] = shown.entries().next().value; r.remove(); shown.delete(k); }
+        while (panel.querySelectorAll(".offer").length > 5) panel.querySelector(".offer").remove();
         panel.classList.add("show");
+      }
+
+      function showOfferLink({ business, luqta_link, map }) {
+        const open = safe(luqta_link);
+        if (!open) return "rejected: not a Luqta link";
+        const deal = { business: String(business ?? "عرض").slice(0, 60), open, map: safe(map) };
+        deals.set(key(deal.business), deal);
+        if (decorateCards().has(key(deal.business))) return "shown";
+        setTimeout(() => { if (!decorateCards().has(key(deal.business))) showInPanel(deal); }, 4000);
         return "shown";
       }
-      document.querySelector("elevenlabs-convai").addEventListener("elevenlabs-convai:call", (event) => {
+
+      // Cards can render after the tool call; keep decorating as the widget updates.
+      const watch = () => {
+        if (!widget.shadowRoot) return setTimeout(watch, 300);
+        new MutationObserver(() => deals.size && decorateCards())
+          .observe(widget.shadowRoot, { childList: true, subtree: true });
+      };
+      watch();
+
+      widget.addEventListener("elevenlabs-convai:call", (event) => {
         event.detail.config.clientTools = { show_offer_link: showOfferLink };
       });
     })();

@@ -20,6 +20,22 @@
     p { font-size: 1.1rem; max-width: 32rem; line-height: 1.7; margin: .25rem 0; color: #444; }
     .hint { margin-top: 1.25rem; font-size: .95rem; color: #777; }
     a { color: inherit; }
+    #offer-links {
+      position: fixed; top: .75rem; left: 50%; transform: translateX(-50%);
+      z-index: 2147483647; width: min(26rem, calc(100vw - 1.5rem));
+      display: none; flex-direction: column; gap: .5rem;
+      background: #ffffff; border-radius: 14px; padding: .75rem;
+      box-shadow: 0 8px 30px rgba(0,0,0,.18); text-align: right; box-sizing: border-box;
+    }
+    #offer-links.show { display: flex; }
+    #offer-links header { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+    #offer-links header button { border: 0; background: none; font-size: 1.2rem; cursor: pointer; color: #666; }
+    .offer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .4rem 0; border-top: 1px solid #eee; }
+    .offer span { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .offer .links { display: flex; gap: .4rem; flex-shrink: 0; }
+    .offer a { text-decoration: none; padding: .35rem .7rem; border-radius: 999px; font-size: .9rem; }
+    .offer a.open { background: #111; color: #fff; }
+    .offer a.map { border: 1px solid #ccc; color: #222; }
   </style>
 </head>
 <body>
@@ -27,7 +43,51 @@
   <p>احچي أو اكتب لمساعد لقطة وگلّه شنو تدور — مطاعم، كافيهات، جمّ، تجميل — وهو يلگيلك أقرب العروض.</p>
   <p class="hint">اضغط على المساعد بالزاوية وابدأ · <a href="https://www.luqtaapp.com" rel="noopener">luqtaapp.com</a></p>
 
+  <div id="offer-links" role="region" aria-label="روابط العروض">
+    <header><span>روابط العروض 🔥</span><button type="button" aria-label="إغلاق">×</button></header>
+  </div>
+
   <elevenlabs-convai agent-id="agent_01jxjv69ktes7sa66s0cjcafs1" variant="expanded"></elevenlabs-convai>
   <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
+  <script>
+    // Client tool `show_offer_link`: the agent calls it for each deal it shows,
+    // and the page lists real, clickable links instead of the agent speaking them.
+    (() => {
+      const panel = document.getElementById("offer-links");
+      panel.querySelector("header button").onclick = () => panel.classList.remove("show");
+      const ALLOWED = ["luqtaapp.com", "maps.google.com"];
+      const safe = (u) => {
+        try {
+          const url = new URL(u);
+          const host = url.hostname.replace(/^www\./, "");
+          return url.protocol === "https:" && ALLOWED.includes(host) ? url.href : null;
+        } catch { return null; }
+      };
+      const shown = new Map(); // luqta_link -> row, newest last, max 5
+      function showOfferLink({ business, luqta_link, map }) {
+        const open = safe(luqta_link);
+        if (!open) return "rejected: not a Luqta link";
+        shown.get(open)?.remove();
+        const row = document.createElement("div");
+        row.className = "offer";
+        const name = document.createElement("span");
+        name.textContent = String(business ?? "عرض").slice(0, 60);
+        const links = document.createElement("div");
+        links.className = "links";
+        links.append(Object.assign(document.createElement("a"), { href: open, target: "_blank", rel: "noopener", className: "open", textContent: "افتح بلقطة" }));
+        const m = safe(map);
+        if (m) links.append(Object.assign(document.createElement("a"), { href: m, target: "_blank", rel: "noopener", className: "map", textContent: "📍 الموقع" }));
+        row.append(name, links);
+        panel.append(row);
+        shown.set(open, row);
+        while (shown.size > 5) { const [k, r] = shown.entries().next().value; r.remove(); shown.delete(k); }
+        panel.classList.add("show");
+        return "shown";
+      }
+      document.querySelector("elevenlabs-convai").addEventListener("elevenlabs-convai:call", (event) => {
+        event.detail.config.clientTools = { show_offer_link: showOfferLink };
+      });
+    })();
+  </script>
 </body>
 </html>

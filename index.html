@@ -1,137 +1,24 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>لقطة — مساعد العروض</title>
-  <meta name="description" content="احچي ويا مساعد لقطة ولاگي أقرب العروض والخصومات إلك.">
-  <meta property="og:title" content="لقطة — مساعد العروض">
-  <meta property="og:description" content="احچي ويا مساعد لقطة ولاگي أقرب العروض والخصومات إلك.">
-  <style>
-    :root { color-scheme: light; }
-    body {
-      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; text-align: center;
-      font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
-      background: #fff8f1; color: #1f1f1f; padding: 2rem 1.25rem 8rem;
-      box-sizing: border-box;
-    }
-    h1 { font-size: 2.4rem; margin: 0 0 .5rem; }
-    p { font-size: 1.1rem; max-width: 32rem; line-height: 1.7; margin: .25rem 0; color: #444; }
-    .hint { margin-top: 1.25rem; font-size: .95rem; color: #777; }
-    a { color: inherit; }
-    #offer-links {
-      position: fixed; top: .75rem; left: 50%; transform: translateX(-50%);
-      z-index: 2147483647; width: min(26rem, calc(100vw - 1.5rem));
-      display: none; flex-direction: column; gap: .5rem;
-      background: #ffffff; border-radius: 14px; padding: .75rem;
-      box-shadow: 0 8px 30px rgba(0,0,0,.18); text-align: right; box-sizing: border-box;
-    }
-    #offer-links.show { display: flex; }
-    #offer-links header { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
-    #offer-links header button { border: 0; background: none; font-size: 1.2rem; cursor: pointer; color: #666; }
-    .offer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .4rem 0; border-top: 1px solid #eee; }
-    .offer span { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  </style>
-</head>
-<body>
-  <h1>🔥 لقطة</h1>
-  <p>احچي أو اكتب لمساعد لقطة وگلّه شنو تدور — مطاعم، كافيهات، جمّ، تجميل — وهو يلگيلك أقرب العروض.</p>
-  <p class="hint">اضغط على المساعد بالزاوية وابدأ · <a href="https://www.luqtaapp.com" rel="noopener">luqtaapp.com</a></p>
-
-  <div id="offer-links" role="region" aria-label="روابط العروض">
-    <header><span>روابط العروض 🔥</span><button type="button" aria-label="إغلاق">×</button></header>
-  </div>
-
-  <elevenlabs-convai agent-id="agent_01jxjv69ktes7sa66s0cjcafs1" variant="expanded"></elevenlabs-convai>
-  <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
-  <script>
-    // Client tool `show_offer_link`: the agent calls it for each deal it shows.
-    // The page adds real "Open in Luqta" / map buttons inside the matching
-    // carousel card (cards are matched by business name = card image alt).
-    // Deals that match no card within a few seconds go to the top panel instead.
-    (() => {
-      const widget = document.querySelector("elevenlabs-convai");
-      const panel = document.getElementById("offer-links");
-      panel.querySelector("header button").onclick = () => panel.classList.remove("show");
-      const ALLOWED = ["luqtaapp.com", "maps.google.com"];
-      const safe = (u) => {
-        try {
-          const url = new URL(u);
-          const host = url.hostname.replace(/^www\./, "");
-          return url.protocol === "https:" && ALLOWED.includes(host) ? url.href : null;
-        } catch { return null; }
-      };
-      const key = (s) => String(s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-      const deals = new Map(); // key(business) -> { business, open, map }
-
-      const BTN = "display:inline-block;padding:6px 12px;border-radius:999px;font-size:13px;" +
-        "text-decoration:none;line-height:1.2;";
-      function linkRow({ open, map }) {
-        const row = document.createElement("div");
-        row.dataset.luqtaLinks = "1";
-        row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;";
-        row.append(Object.assign(document.createElement("a"), {
-          href: open, target: "_blank", rel: "noopener", textContent: "افتح بلقطة",
-        }));
-        row.lastChild.style.cssText = BTN + "background:#111;color:#fff;";
-        if (map) {
-          row.append(Object.assign(document.createElement("a"), {
-            href: map, target: "_blank", rel: "noopener", textContent: "📍 الموقع",
-          }));
-          row.lastChild.style.cssText = BTN + "border:1px solid #ccc;color:#222;";
-        }
-        return row;
-      }
-
-      // Add buttons to every card whose image alt matches a known deal.
-      function decorateCards() {
-        const root = widget.shadowRoot;
-        if (!root) return new Set();
-        const matched = new Set();
-        for (const img of root.querySelectorAll("img[alt]")) {
-          const deal = deals.get(key(img.alt));
-          const card = img.parentElement;
-          if (!deal || !card) continue;
-          matched.add(key(img.alt));
-          if (!card.querySelector("[data-luqta-links]")) card.append(linkRow(deal));
-        }
-        return matched;
-      }
-
-      function showInPanel(deal) {
-        const row = document.createElement("div");
-        row.className = "offer";
-        const name = document.createElement("span");
-        name.textContent = deal.business;
-        row.append(name, linkRow(deal));
-        panel.append(row);
-        while (panel.querySelectorAll(".offer").length > 5) panel.querySelector(".offer").remove();
-        panel.classList.add("show");
-      }
-
-      function showOfferLink({ business, luqta_link, map }) {
-        const open = safe(luqta_link);
-        if (!open) return "rejected: not a Luqta link";
-        const deal = { business: String(business ?? "عرض").slice(0, 60), open, map: safe(map) };
-        deals.set(key(deal.business), deal);
-        if (decorateCards().has(key(deal.business))) return "shown";
-        setTimeout(() => { if (!decorateCards().has(key(deal.business))) showInPanel(deal); }, 4000);
-        return "shown";
-      }
-
-      // Cards can render after the tool call; keep decorating as the widget updates.
-      const watch = () => {
-        if (!widget.shadowRoot) return setTimeout(watch, 300);
-        new MutationObserver(() => deals.size && decorateCards())
-          .observe(widget.shadowRoot, { childList: true, subtree: true });
-      };
-      watch();
-
-      widget.addEventListener("elevenlabs-convai:call", (event) => {
-        event.detail.config.clientTools = { show_offer_link: showOfferLink };
-      });
-    })();
-  </script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#4EC7C2" />
+    <title>لُگطة — مساعد العروض</title>
+    <meta name="description" content="احچي ويا مساعد لُگطة ولاگي أقرب العروض والخصومات إلك." />
+    <meta property="og:title" content="لُگطة — مساعد العروض" />
+    <meta property="og:description" content="احچي ويا مساعد لُگطة ولاگي أقرب العروض والخصومات إلك." />
+    <link rel="icon" href="./favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap"
+    />
+    <script type="module" crossorigin src="./assets/index-Y3mBZy4_.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-6S9ZLyhQ.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
